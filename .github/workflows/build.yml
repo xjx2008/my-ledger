@@ -56,24 +56,39 @@ jobs:
                   g = f.read()
               g = re.sub(r'compileSdkVersion\s+\d+', 'compileSdkVersion 35', g)
               g = re.sub(r'compileSdk\s*=\s*\d+', 'compileSdk = 35', g)
-              # 关闭代码混淆：R8 会裁剪掉 ML Kit 的多语言识别器类导致构建失败
-              g = re.sub(r'minifyEnabled\s+true', 'minifyEnabled false', g)
-              g = re.sub(r'minifyEnabled\.set\(true\)', 'minifyEnabled.set(false)', g)
               with io.open(gradle, 'w', encoding='utf-8') as f:
                   f.write(g)
-              print('compileSdk=35, minifyEnabled=false in', gradle)
+              print('compileSdk=35 in', gradle)
           else:
-              print('WARN: gradle file not found, skip override')
+              print('WARN: gradle file not found, skip compileSdk override')
 
-          # 同时确保 release buildType 不启用 shrinkResources（也可能裁剪 ML Kit 类）
-          for gp in ['android/app/build.gradle', 'android/app/build.gradle.kts']:
-              if os.path.exists(gp):
-                  with io.open(gp, encoding='utf-8') as f:
-                      gg = f.read()
-                  gg = re.sub(r'shrinkResources\s+true', 'shrinkResources false', gg)
-                  gg = re.sub(r'shrinkResources\.set\(true\)', 'shrinkResources.set(false)', gg)
-                  with io.open(gp, 'w', encoding='utf-8') as f:
-                      f.write(gg)
+          # 关闭 R8 混淆：会裁剪掉 ML Kit 的多语言识别器类导致构建失败
+          # 覆盖 Groovy(minifyEnabled true) 与 Kotlin DSL(isMinifyEnabled = true / .set(true)) 写法
+          import glob
+          for gp in glob.glob('android/app/build.gradle*'):
+              with io.open(gp, encoding='utf-8') as f:
+                  gg = f.read()
+              before = gg
+              gg = re.sub(r'\bisMinifyEnabled\s*=\s*true', 'isMinifyEnabled = false', gg)
+              gg = re.sub(r'\bminifyEnabled\s+true', 'minifyEnabled false', gg)
+              gg = re.sub(r'minifyEnabled\.set\(true\)', 'minifyEnabled.set(false)', gg)
+              gg = re.sub(r'\bisShrinkResources\s*=\s*true', 'isShrinkResources = false', gg)
+              gg = re.sub(r'\bshrinkResources\s+true', 'shrinkResources false', gg)
+              gg = re.sub(r'shrinkResources\.set\(true\)', 'shrinkResources.set(false)', gg)
+              with io.open(gp, 'w', encoding='utf-8') as f:
+                  f.write(gg)
+              print(gp, 'minify disabled:', before != gg)
+
+          # 双保险：写 proguard keep 规则，保留 ML Kit 识别器类（minify 开关若失效也生效）
+          rules = '\n'.join([
+              '-keep class com.google.mlkit.** { *; }',
+              '-keep class com.google.android.gms.** { *; }',
+              '-dontwarn com.google.mlkit.**',
+              '-dontwarn com.google.android.gms.**',
+          ])
+          with io.open('android/app/proguard-rules.pro', 'a', encoding='utf-8') as f:
+              f.write('\n' + rules)
+          print('proguard keep rules appended')
           PY
 
       - name: Get dependencies

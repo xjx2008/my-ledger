@@ -25,7 +25,7 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          flutter-version: '3.24.5'
           cache: true
 
       - name: Generate platform scaffold
@@ -37,49 +37,17 @@ jobs:
       - name: Set app display name
         run: |
           python3 - <<'PY'
-          import io
+          import io, glob
+          # 1) App 显示名改为中文
           path = 'android/app/src/main/AndroidManifest.xml'
           with io.open(path, encoding='utf-8') as f:
               content = f.read()
-          # flutter create 默认 label 为项目名 ledger_app，替换为中文显示名
           content = content.replace('android:label="ledger_app"', 'android:label="记账本"')
           with io.open(path, 'w', encoding='utf-8') as f:
               f.write(content)
           print('App label set to 记账本')
 
-          # ML Kit 需要 compileSdk 35，提升 Gradle 配置（兼容 .gradle 与 .gradle.kts）
-          import os, re
-          gradle_candidates = ['android/app/build.gradle', 'android/app/build.gradle.kts']
-          gradle = next((p for p in gradle_candidates if os.path.exists(p)), None)
-          if gradle:
-              with io.open(gradle, encoding='utf-8') as f:
-                  g = f.read()
-              g = re.sub(r'compileSdkVersion\s+\d+', 'compileSdkVersion 35', g)
-              g = re.sub(r'compileSdk\s*=\s*\d+', 'compileSdk = 35', g)
-              with io.open(gradle, 'w', encoding='utf-8') as f:
-                  f.write(g)
-              print('compileSdk=35 in', gradle)
-          else:
-              print('WARN: gradle file not found, skip compileSdk override')
-
-          # 关闭 R8 混淆：会裁剪掉 ML Kit 的多语言识别器类导致构建失败
-          # 覆盖 Groovy(minifyEnabled true) 与 Kotlin DSL(isMinifyEnabled = true / .set(true)) 写法
-          import glob
-          for gp in glob.glob('android/app/build.gradle*'):
-              with io.open(gp, encoding='utf-8') as f:
-                  gg = f.read()
-              before = gg
-              gg = re.sub(r'\bisMinifyEnabled\s*=\s*true', 'isMinifyEnabled = false', gg)
-              gg = re.sub(r'\bminifyEnabled\s+true', 'minifyEnabled false', gg)
-              gg = re.sub(r'minifyEnabled\.set\(true\)', 'minifyEnabled.set(false)', gg)
-              gg = re.sub(r'\bisShrinkResources\s*=\s*true', 'isShrinkResources = false', gg)
-              gg = re.sub(r'\bshrinkResources\s+true', 'shrinkResources false', gg)
-              gg = re.sub(r'shrinkResources\.set\(true\)', 'shrinkResources.set(false)', gg)
-              with io.open(gp, 'w', encoding='utf-8') as f:
-                  f.write(gg)
-              print(gp, 'minify disabled:', before != gg)
-
-          # 双保险：写 proguard keep 规则，保留 ML Kit 识别器类（minify 开关若失效也生效）
+          # 2) 关闭混淆 + 写 proguard keep，保留 ML Kit 识别器类
           rules = '\n'.join([
               '-keep class com.google.mlkit.** { *; }',
               '-keep class com.google.android.gms.** { *; }',
@@ -89,23 +57,6 @@ jobs:
           with io.open('android/app/proguard-rules.pro', 'a', encoding='utf-8') as f:
               f.write('\n' + rules)
           print('proguard keep rules appended')
-
-          # 禁用 lintVital：新版 Flutter 的 lint 工具与 image_picker 不兼容会崩溃
-          # 在 app 级 build.gradle* 的 android{} 块内插入 lint { checkReleaseBuilds false }
-          import glob
-          for gp in glob.glob('android/app/build.gradle*'):
-              with io.open(gp, encoding='utf-8') as f:
-                   _app = f.read()
-              if 'checkReleaseBuilds' not in _app:
-                  marker = 'android {'
-                  lint_block = ('android {\n    lint {\n        checkReleaseBuilds false\n        abortOnError false\n    }'
-                               if gp.endswith('.kts')
-                               else 'android {\n    lint {\n        checkReleaseBuilds false\n        abortOnError false\n    }')
-                  if marker in _app:
-                      _app = _app.replace(marker, lint_block, 1)
-                      with io.open(gp, 'w', encoding='utf-8') as f:
-                          f.write(_app)
-                      print('lint disabled in', gp)
           PY
 
       - name: Get dependencies

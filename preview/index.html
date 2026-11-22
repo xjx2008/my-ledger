@@ -66,6 +66,9 @@ body { font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; ba
 .amount-show { text-align: center; margin: 22px 0; }
 .amount-show .lbl { font-size: 12px; color: var(--sub); }
 .amount-show .val { font-size: 36px; font-weight: 600; color: var(--text); margin-top: 6px; }
+.scan-btn { background: var(--card); border: 1px dashed var(--primary); border-radius: 12px; padding: 11px 12px; text-align: center; font-size: 12px; color: var(--primary); cursor: pointer; margin-top: 4px; }
+.scan-btn:active { opacity: 0.7; }
+.scan-receipt { background:#FFFDF5; border:1px solid rgba(0,0,0,.08); border-radius:6px; padding:12px 14px; font-family:monospace; font-size:11px; line-height:1.7; color:#444; box-shadow:0 1px 3px rgba(0,0,0,.06); }
 .cat-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; }
 .cat-chip { background: var(--card); border-radius: 12px; padding: 10px 0; text-align: center; cursor: pointer; border: 2px solid transparent; transition: .1s; }
 .cat-chip.sel { border-color: var(--chip-color, var(--primary)); background: color-mix(in srgb, var(--chip-color, var(--primary)) 12%, var(--card)); }
@@ -144,6 +147,7 @@ body { font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; ba
     • 首页点分类可直接记账<br>
     • 明细页点账目可删除<br>
     • 记账可选支付方式，账单上直接显示<br>
+    • 记账页「识图记账」可识图回填（预览为模拟）<br>
     • 设置里可切换 6 套主题<br>
     • 数据存在本机浏览器，刷新不丢
   </div>
@@ -343,7 +347,8 @@ function viewAdd(){
     <div class="page-title">记一笔</div>
     <div class="seg"><div class="${addType==='expense'?'on':''}" data-type="expense">支出</div><div class="${addType==='income'?'on':''}" data-type="income">收入</div></div>
     <div class="amount-show"><div class="lbl">金额</div><div class="val">¥ ${addInput}</div></div>
-    <div style="font-size:13px;color:var(--sub);margin:0 0 10px">支付方式</div>
+    <div class="scan-btn" data-scan="1">📷 识图记账 · 拍照自动填金额/日期/支付方式</div>
+    <div style="font-size:13px;color:var(--sub);margin:14px 0 10px">支付方式</div>
     <div class="pay-grid">
       ${PAYMENTS.map(p=>`<div class="pay-chip ${addPay===p.id?'sel':''}" style="${addPay===p.id?'border-color:'+p.color+';background:'+p.color+'18':''}" data-pay="${p.id}"><span class="pi" style="background:${p.color}22;color:${p.color}">${p.icon}</span><span style="${addPay===p.id?'color:'+p.color+';font-weight:600':''}">${p.name}</span></div>`).join('')}
     </div>
@@ -586,6 +591,38 @@ function openRecActions(id){
   document.getElementById('rCancel').onclick=closeSheet;
 }
 
+// ---------- 识图记账演示 ----------
+// 预览版用模拟识别展示交互；真实 App 使用本地 OCR 从图片识别
+const SCAN_SAMPLES = [
+  {amount:'38.50', date:new Date(), pay:'wechat', cat:'餐饮', text:'美团外卖\n订单金额 ¥38.50\n微信支付\n2026-11-22'},
+  {amount:'128.00', date:new Date(Date.now()-86400000), pay:'alipay', cat:'购物', text:'优衣库\n合计 ¥128.00\n支付宝\n2026-11-21'},
+  {amount:'26.00', date:new Date(Date.now()-172800000), pay:'card', cat:'交通', text:'滴滴出行\n行程 ¥26.00\n银行卡支付\n2026-11-20'},
+];
+function openScanDemo(){
+  const s=SCAN_SAMPLES[Math.floor(Math.random()*SCAN_SAMPLES.length)];
+  const catObj=S.cats[addType].find(c=>c.name===s.cat);
+  showSheet(`
+    <h3>📷 识图结果</h3>
+    <div class="muted" style="font-size:12px;margin-bottom:12px">已从图片识别（预览为模拟数据，真实 App 用本地 OCR）</div>
+    <div class="scan-receipt">${s.text.split('\n').map(x=>esc(x)).join('<br>')}</div>
+    <div class="field" style="line-height:2;font-size:13px;color:var(--text)">
+      <div>💰 金额：<b style="color:var(--primary)">¥${s.amount}</b></div>
+      <div>📅 日期：<b>${s.date.getFullYear()}-${String(s.date.getMonth()+1).padStart(2,'0')}-${String(s.date.getDate()).padStart(2,'0')}</b></div>
+      <div>💳 支付：<b>${(PAYMENTS.find(p=>p.id===s.pay)||{}).name||'其他'}</b></div>
+    </div>
+    <div class="field row" style="gap:10px">
+      <div class="btn" id="scanCancel" style="background:var(--card);color:var(--text);flex:1">取消</div>
+      <div class="btn" id="scanConfirm" style="flex:2">回填到记账单</div>
+    </div>
+  `);
+  document.getElementById('scanCancel').onclick=closeSheet;
+  document.getElementById('scanConfirm').onclick=()=>{
+    addInput=s.amount; addDate=s.date; addPay=s.pay;
+    if(catObj) addCatId=catObj.id;
+    closeSheet(); render(); toast('已回填，请核对后保存');
+  };
+}
+
 // ---------- 事件绑定 ----------
 function bindPage(){
   document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{ NAV=+t.dataset.nav; resetAddIfNeeded(); render(); });
@@ -600,6 +637,7 @@ function bindPage(){
   document.querySelectorAll('[data-cat]').forEach(e=>e.onclick=()=>{ addCatId=+e.dataset.cat;render(); });
   document.querySelectorAll('[data-custom]').forEach(e=>e.onclick=()=>openCategoryDialog(addType,null));
   document.querySelectorAll('[data-pay]').forEach(e=>e.onclick=()=>{ addPay=e.dataset.pay; render(); });
+  document.querySelectorAll('[data-scan]').forEach(e=>e.onclick=()=>openScanDemo());
   document.querySelectorAll('[data-key]').forEach(e=>e.onclick=()=>{
     const k=e.dataset.key;
     if(k==='⌫'){ addInput=addInput.length<=1?'0':addInput.slice(0,-1); }

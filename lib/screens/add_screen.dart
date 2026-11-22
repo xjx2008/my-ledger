@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart' hide Category;
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 
 import '../data/app_state.dart';
 import '../data/models.dart';
 import '../data/presets.dart';
+import '../data/receipt_parser.dart';
 import '../theme/app_theme.dart';
 import '../widgets/formatters.dart';
 import 'home_screen.dart' show selectedCategoryId;
 import 'category_dialog.dart';
+import 'receipt_confirm.dart';
 
 class AddScreen extends StatefulWidget {
   const AddScreen({super.key});
@@ -154,6 +158,102 @@ class _AddScreenState extends State<AddScreen> {
     if (created == true && mounted) setState(() {});
   }
 
+  /// 识图记账：选图 → 本地 OCR → 解析 → 弹窗确认回填
+  Future<void> _scanReceipt(ImageSource source) async {
+    try {
+      final picker = ImagePicker();
+      final XFile? image = await picker.pickImage(
+        source: source,
+        imageQuality: 85,
+        maxWidth: 1600,
+      );
+      if (image == null) return;
+
+      if (!mounted) return;
+      setState(() => _saving = true); // 复用 loading 态，禁用键盘输入
+
+      final recognizer = TextRecognizer(script: TextRecognitionScript.chinese);
+      RecognizedText recognized;
+      try {
+        recognized = await recognizer.processImage(InputImage.fromFilePath(image.path));
+      } finally {
+        recognizer.close();
+      }
+
+      final result = parseReceipt(recognized.text);
+      if (!mounted) return;
+      setState(() => _saving = false);
+
+      if (!mounted) return;
+      showReceiptConfirmSheet(
+        context: context,
+        result: result,
+        onConfirm: (amountCents, date, payment, catName) {
+          setState(() {
+            if (amountCents != null) {
+              _input = (amountCents / 100).toStringAsFixed(2);
+            }
+            if (date != null) _date = date;
+            if (payment != null) _payment = payment;
+            if (catName.isNotEmpty) {
+              // 按名称匹配当前类型下的分类
+              final matched = _cats.where((c) => c.name == catName);
+              if (matched.isNotEmpty) _selectedCatId = matched.first.id;
+            }
+          });
+        },
+      );
+    } catch (e) {
+      if (mounted) {
+        setState(() => _saving = false);
+        final msg = e.toString().toLowerCase();
+        // ML Kit 依赖 Google 服务，国内部分机型缺少时给出可操作的提示
+        final hint = msg.contains('google') || msg.contains('service') || msg.contains('unavailable')
+            ? '识别服务不可用（部分国产手机缺少 Google 服务），请手动填写'
+            : '识别失败，请重试或手动填写';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(hint), duration: const Duration(seconds: 3)),
+        );
+      }
+    }
+  }
+
+  void _showScanOptions() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: appState.theme.card,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            ListTile(
+              leading: const Icon(Icons.photo_camera),
+              title: const Text('拍照识图'),
+              subtitle: const Text('对着小票或账单拍照'),
+              onTap: () {
+                Navigator.pop(context);
+                _scanReceipt(ImageSource.camera);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library),
+              title: const Text('从相册选择'),
+              subtitle: const Text('选择已有的小票图片'),
+              onTap: () {
+                Navigator.pop(context);
+                _scanReceipt(ImageSource.gallery);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -199,7 +299,23 @@ class _AddScreenState extends State<AddScreen> {
                           ],
                         ),
                       ),
-                      const SizedBox(height: 22),
+                      const SizedBox(height: 16),
+                      // 识图记账入口
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: _saving ? null : _showScanOptions,
+                          icon: Icon(Icons.document_scanner, size: 18, color: t.primary),
+                          label: Text('识图记账 · 拍照自动填金额/日期/支付方式',
+                              style: TextStyle(fontSize: 12, color: t.primary)),
+                          style: OutlinedButton.styleFrom(
+                            side: BorderSide(color: t.primary.withOpacity(0.5)),
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 18),
                       Text('支付方式', style: TextStyle(fontSize: 13, color: t.subText)),
                       const SizedBox(height: 10),
                       Wrap(

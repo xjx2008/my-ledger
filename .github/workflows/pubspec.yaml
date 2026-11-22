@@ -1,0 +1,25 @@
+﻿name: ledger_app
+description: 本地记账工具 - 记账、分类、统计、多主题
+publish_to: "none"
+version: 1.2.0+5
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+  sqflite: ^2.3.0
+  path: ^1.8.3
+  shared_preferences: ^2.2.2
+  image_picker: ^1.0.7
+  google_mlkit_text_recognition: 0.14.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true

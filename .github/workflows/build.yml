@@ -59,6 +59,43 @@ jobs:
           print('proguard keep rules appended')
           PY
 
+      - name: Bundle Chinese OCR model
+        run: |
+          python3 - <<'PY'
+          import io, os
+          # google_mlkit_text_recognition 0.14.0 默认只打包拉丁模型，
+          # 中文识别必须由 App 自己引入 text-recognition-chinese。
+          candidates = [
+              ('android/app/build.gradle.kts',
+               '    implementation("com.google.mlkit:text-recognition-chinese:16.0.0")\n'),
+              ('android/app/build.gradle',
+               "    implementation 'com.google.mlkit:text-recognition-chinese:16.0.0'\n"),
+          ]
+          patched = []
+          for path, line in candidates:
+              if not os.path.exists(path):
+                  continue
+              with io.open(path, encoding='utf-8') as f:
+                  content = f.read()
+              if 'text-recognition-chinese' in content:
+                  print(path, 'already has chinese model')
+                  patched.append(path)
+                  continue
+              marker = 'dependencies {'
+              idx = content.find(marker)
+              if idx < 0:
+                  # 新脚手架可能连 dependencies 块都没有，直接补一个
+                  content = content.rstrip() + '\n\ndependencies {\n' + line + '}\n'
+              else:
+                  content = content[:idx] + marker + '\n' + line + content[idx + len(marker):]
+              with io.open(path, 'w', encoding='utf-8') as f:
+                  f.write(content)
+              print(path, 'chinese model dependency added')
+              patched.append(path)
+          if not patched:
+              raise SystemExit('ERROR: android/app/build.gradle[.kts] not found')
+          PY
+
       - name: Get dependencies
         run: flutter pub get
 
@@ -67,6 +104,19 @@ jobs:
 
       - name: Build release APK
         run: flutter build apk --release
+
+      - name: Verify Chinese OCR is bundled
+        run: |
+          set -e
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          mkdir -p /tmp/apk
+          unzip -o -q "$APK" -d /tmp/apk
+          if grep -r -a -q "text/chinese" /tmp/apk/classes*.dex; then
+            echo "OK: Chinese text recognizer is bundled"
+          else
+            echo "ERROR: Chinese text recognizer NOT bundled - 识图会闪退"
+            exit 1
+          fi
 
       - name: Rename APK
         run: cp build/app/outputs/flutter-apk/app-release.apk ledger-app-${GITHUB_REF_NAME}.apk
@@ -86,6 +136,7 @@ jobs:
 
             ### 功能
             - 手动记账（金额/分类/备注/日期）
+            - 识图记账：小票单笔回填；微信/支付宝账单长截图拆成多笔，勾选后批量导入
             - 支出 12 类 + 收入 7 类预设，两边均支持自定义增删改
             - 周/月/年统计 + 自定义日期区间，含分类饼图和收支趋势图
             - 6 套主题风格随时切换，自动记忆

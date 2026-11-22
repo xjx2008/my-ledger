@@ -33,14 +33,14 @@ ReceiptResult parseReceipt(String text) {
   );
 }
 
-/// 金额：优先「合计/总计/实付/应付/金额/共/TOTAL」后的数字，
+/// 金额：优先「合计/实付/支付金额/转账金额/TOTAL」后的数字，
 /// 其次带 ¥/￥ 的数字，最后取所有合理金额中的最大值。
 int? _extractAmount(String text) {
   final amountPattern = r'(\d+(?:[.,]\d{1,2})?)';
 
-  // 1) 关键字引导的金额（权重最高），只取关键字所在行或紧随其后
+  // 1) 关键字引导的金额（权重最高），覆盖小票与微信/支付宝账单常用词
   final labelRe = RegExp(
-    r'(?:合计|总计|实付|应付|金额|总计金额|消费金额|支付金额|收款|付款|共(?:计)?|TOTAL|Amount)[^\d\n]{0,8}' +
+    r'(?:合计|总计|实付|应付|消费金额|支付金额|付款金额|转账金额|交易金额|订单金额|金额|收款|付款|转账|支出|转出|共(?:计)?|TOTAL|Amount)[^\d\n]{0,8}' +
         amountPattern,
     caseSensitive: false,
   );
@@ -105,8 +105,9 @@ DateTime? _extractDate(String text) {
   }
 
   // 月-日（补当前年份）：先去掉完整年月日，避免重复匹配
+  // 分隔符不含「.」：账单里金额如 5.20 会被误读成 5月20日，故只认 - / 月
   final withoutFull = text.replaceAll(fullRe, '');
-  final mdRe = RegExp(r'\b(\d{1,2})\s*[-/月.]\s*(\d{1,2})\b');
+  final mdRe = RegExp(r'\b(\d{1,2})\s*[-/月]\s*(\d{1,2})\b');
   for (final m in mdRe.allMatches(withoutFull)) {
     final mo = int.tryParse(m.group(1) ?? '');
     final d = int.tryParse(m.group(2) ?? '');
@@ -123,20 +124,43 @@ bool _validDate(int? y, int? m, int? d) {
   return true;
 }
 
-/// 支付方式：优先匹配品牌关键词
+/// 支付方式：结合「具体扣款渠道」与「平台品牌」识别，覆盖微信/支付宝账单截图。
+/// 优先级：平台专属渠道（花呗/零钱）> 银行卡 > 现金 > 平台品牌兜底。
+/// 原因：微信/支付宝账单顶部必有品牌字样，但真正体现「用什么付」的是扣款渠道。
 String? _extractPayment(String text) {
-  if (RegExp(r'支付宝|阿里|alipay', caseSensitive: false).hasMatch(text)) {
+  // 1) 平台专属扣款渠道（比品牌词更能反映实际付款方式）
+  if (RegExp(r'花呗|借呗|余额宝|网商银行|蚂蚁信用', caseSensitive: false)
+      .hasMatch(text)) {
     return 'alipay';
   }
-  if (RegExp(r'微信|wechat|weixin|财付通', caseSensitive: false).hasMatch(text)) {
+  if (RegExp(r'零钱通|微信零钱|零钱支付|零钱', caseSensitive: false)
+      .hasMatch(text)) {
     return 'wechat';
   }
-  if (RegExp(r'银行卡|信用卡|借记卡|银联|储蓄卡|card', caseSensitive: false)
-      .hasMatch(text)) {
+  // 「余额」（去掉余额宝后）归支付宝——微信没有「余额」概念
+  if (text.replaceAll('余额宝', '').contains('余额')) return 'alipay';
+
+  // 2) 银行卡强特征：卡种 / 尾号 / 银行名+数字 / 掩码卡号
+  if (RegExp(
+          r'银行卡|信用卡|储蓄卡|借记卡|银联|尾号\s*\d{3,4}|银行\s*\(?\d{3,4}\)?|\*{3,4}\s*\d{3,4}|\bcard\b',
+          caseSensitive: false,
+        ).hasMatch(text)) {
     return 'card';
   }
-  if (RegExp(r'现金|cash', caseSensitive: false).hasMatch(text)) {
+
+  // 3) 现金
+  if (RegExp(r'现金|现钞|\bcash\b', caseSensitive: false).hasMatch(text)) {
     return 'cash';
+  }
+
+  // 4) 兜底：账单顶部的平台品牌字样
+  if (RegExp(r'支付宝|阿里|蚂蚁|\balipay\b', caseSensitive: false)
+      .hasMatch(text)) {
+    return 'alipay';
+  }
+  if (RegExp(r'微信|财付通|\bwechat\b|\bweixin\b', caseSensitive: false)
+      .hasMatch(text)) {
+    return 'wechat';
   }
   return null;
 }
@@ -144,12 +168,12 @@ String? _extractPayment(String text) {
 /// 根据票据上的商品关键词，猜测分类名（用于回填分类，用户仍可改）
 String _matchCategory(String text) {
   final rules = <String, List<String>>{
-    '餐饮': ['餐饮', '餐厅', '饭店', '食', '餐', '外卖', '咖啡', '奶茶', '火锅', '超市', '便'],
-    '交通': ['交通', '打车', '出租', '地铁', '公交', '加油', '停车', '滴滴', '高铁', '火车'],
-    '购物': ['购物', '商场', '服饰', '服装', '鞋', '电商', '淘宝', '京东'],
-    '日用': ['日用', '日用品', '百货', '家居', '洗护'],
-    '娱乐': ['娱乐', '电影', '影院', '游戏', 'KTV', '健身'],
-    '医疗': ['医院', '医药', '药店', '诊所', '挂号'],
+    '餐饮': ['餐饮', '餐厅', '饭店', '食', '餐', '外卖', '咖啡', '奶茶', '火锅', '超市', '美团', '饿了么', '肯德基', '麦当劳', '星巴克', '瑞幸'],
+    '交通': ['交通', '打车', '出租', '地铁', '公交', '加油', '停车', '滴滴', '高铁', '火车', '航空', '机票', '共享单车'],
+    '购物': ['购物', '商场', '服饰', '服装', '鞋', '电商', '淘宝', '京东', '拼多多', '天猫', '唯品会'],
+    '日用': ['日用', '日用品', '百货', '家居', '洗护', '便利店'],
+    '娱乐': ['娱乐', '电影', '影院', '游戏', 'KTV', '健身', '视频会员', '音乐'],
+    '医疗': ['医院', '医药', '药店', '诊所', '挂号', '体检'],
   };
   for (final entry in rules.entries) {
     for (final kw in entry.value) {

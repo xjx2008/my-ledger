@@ -125,6 +125,21 @@ void showReceiptConfirmSheet({
               }).toList(),
             ),
 
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                style: TextButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  minimumSize: const Size(0, 32),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                onPressed: () => _showRawTextDialog(context, result.rawText),
+                icon: Icon(Icons.subject, size: 14, color: t.subText),
+                label: Text('查看识别原文',
+                    style: TextStyle(fontSize: 12, color: t.subText)),
+              ),
+            ),
+
             if (!result.hasAny) ...[
               const SizedBox(height: 16),
               Container(
@@ -163,6 +178,33 @@ void showReceiptConfirmSheet({
           ],
         ),
       ),
+    ),
+  );
+}
+
+/// 显示 OCR 识别到的原始文字，便于判断是"没读出来"还是"读出来了但解析错"
+void _showRawTextDialog(BuildContext context, String rawText) {
+  final t = appState.theme;
+  showDialog<void>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: t.card,
+      title: Text('识别原文', style: TextStyle(fontSize: 16, color: t.text)),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: SingleChildScrollView(
+          child: SelectableText(
+            rawText.trim().isEmpty ? '（没有识别到任何文字）' : rawText,
+            style: TextStyle(fontSize: 12, height: 1.6, color: t.subText),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx),
+          child: Text('关闭', style: TextStyle(color: t.primary)),
+        ),
+      ],
     ),
   );
 }

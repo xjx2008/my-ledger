@@ -151,6 +151,19 @@ class AppDatabase {
     return db.insert('records', map);
   }
 
+  /// 批量插入（账单截图导入用）：一个事务写完，避免逐条提交
+  Future<void> insertRecords(List<RecordItem> records) async {
+    if (records.isEmpty) return;
+    final db = await database;
+    final batch = db.batch();
+    for (final record in records) {
+      final map = record.toMap();
+      map.remove('id');
+      batch.insert('records', map);
+    }
+    await batch.commit(noResult: true);
+  }
+
   Future<int> updateRecord(RecordItem record) async {
     final db = await database;
     return db.update(

@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 
 import '../data/app_state.dart';
+import '../data/bill_parser.dart';
 import '../data/models.dart';
 import '../data/presets.dart';
 import '../data/receipt_parser.dart';
@@ -11,6 +12,7 @@ import '../theme/app_theme.dart';
 import '../widgets/formatters.dart';
 import 'home_screen.dart' show selectedCategoryId;
 import 'category_dialog.dart';
+import 'bill_import_screen.dart';
 import 'receipt_confirm.dart';
 
 class AddScreen extends StatefulWidget {
@@ -181,8 +183,50 @@ class _AddScreenState extends State<AddScreen> {
       }
 
       final result = parseReceipt(recognized.text);
+
+      // 账单列表（微信/支付宝）：按行聚类拆成多笔
+      final drafts = parseBillList(
+        lines: [
+          for (final block in recognized.blocks)
+            for (final line in block.lines)
+              OcrLine(
+                text: line.text,
+                left: line.boundingBox!.left,
+                top: line.boundingBox!.top,
+                right: line.boundingBox!.right,
+                bottom: line.boundingBox!.bottom,
+              ),
+        ],
+        headerText: recognized.text,
+        defaultPayment: _payment,
+      );
+
       if (!mounted) return;
       setState(() => _saving = false);
+
+      // 小票有「合计/实付」这类汇总词，按单笔处理；账单列表才走多笔导入
+      final looksLikeReceipt =
+          RegExp(r'合计|实付|应付|总计|找零').hasMatch(recognized.text);
+      if (!looksLikeReceipt && drafts.length >= 2) {
+        final imported = await Navigator.push<int>(
+          context,
+          MaterialPageRoute(
+            builder: (_) => BillImportScreen(
+              drafts: drafts,
+              rawText: recognized.text,
+            ),
+          ),
+        );
+        if (imported != null && imported > 0 && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('已导入 $imported 笔'),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+        return;
+      }
 
       if (!mounted) return;
       showReceiptConfirmSheet(
@@ -206,13 +250,12 @@ class _AddScreenState extends State<AddScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _saving = false);
-        final msg = e.toString().toLowerCase();
-        // ML Kit 依赖 Google 服务，国内部分机型缺少时给出可操作的提示
-        final hint = msg.contains('google') || msg.contains('service') || msg.contains('unavailable')
-            ? '识别服务不可用（部分国产手机缺少 Google 服务），请手动填写'
-            : '识别失败，请重试或手动填写';
+        debugPrint('识图失败: $e');
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(hint), duration: const Duration(seconds: 3)),
+          const SnackBar(
+            content: Text('识别失败，请重试或手动填写'),
+            duration: Duration(seconds: 3),
+          ),
         );
       }
     }

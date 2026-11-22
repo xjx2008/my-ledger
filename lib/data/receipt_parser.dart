@@ -34,9 +34,11 @@ ReceiptResult parseReceipt(String text) {
 }
 
 /// 金额：优先「合计/实付/支付金额/转账金额/TOTAL」后的数字，
-/// 其次带 ¥/￥ 的数字，最后取所有合理金额中的最大值。
+/// 其次带 ¥/￥ 的数字，最后取带小数点的最大数（已排除日期/时间/年份）。
 int? _extractAmount(String text) {
-  final amountPattern = r'(\d+(?:[.,]\d{1,2})?)';
+  // 金额形态：支持千分位（1,234.56）、普通（1234.56）、整数（58）
+  const amountPattern =
+      r'(\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)';
 
   // 1) 关键字引导的金额（权重最高），覆盖小票与微信/支付宝账单常用词
   final labelRe = RegExp(
@@ -54,26 +56,32 @@ int? _extractAmount(String text) {
 
   // 2) 带货币符号的数字
   final symbolRe = RegExp(r'[¥￥]\s*' + amountPattern);
-  final symbolMatches = symbolRe.allMatches(text).toList();
-  if (symbolMatches.isNotEmpty) {
-    // 取带符号中最大的（合计通常最大）
-    int? best;
-    for (final m in symbolMatches) {
-      final v = _toCents(m.group(1));
-      if (v != null && v > 0 && (best == null || v > best)) best = v;
+  int? symbolBest;
+  for (final m in symbolRe.allMatches(text)) {
+    final v = _toCents(m.group(1));
+    if (v != null && v > 0 && (symbolBest == null || v > symbolBest)) {
+      symbolBest = v;
     }
-    if (best != null) return best;
   }
+  if (symbolBest != null) return symbolBest;
 
-  // 3) 兜底：所有数字中的最大值（过滤掉电话号码、日期等）
-  final allRe = RegExp(amountPattern);
+  // 3) 兜底：先把日期/时间/年份抹掉，否则 2026、11、20 会被当成金额
+  final masked = text
+      .replaceAll(
+        RegExp(r'\d{4}\s*[-/年.]\s*\d{1,2}\s*[-/月.]\s*\d{1,2}\s*日?'),
+        ' ',
+      )
+      .replaceAll(RegExp(r'\d{1,2}:\d{2}(?::\d{2})?'), ' ')
+      .replaceAll(RegExp(r'\d{4}\s*年'), ' ');
+
+  // 只认带小数点的数：账单/小票金额几乎都有两位小数，
+  // 这个约束顺手排除年份、件数、电话、订单号。
   int? max;
-  for (final m in allRe.allMatches(text)) {
+  for (final m in RegExp(amountPattern).allMatches(masked)) {
     final token = m.group(1) ?? '';
-    // 跳过明显是日期/时间的片段
-    if (token.contains('/') || token.contains('-')) continue;
+    if (!token.contains('.')) continue;
     final v = _toCents(token);
-    if (v != null && v >= 100 && v <= 100000000 && (max == null || v > max)) {
+    if (v != null && v > 0 && v <= 100000000 && (max == null || v > max)) {
       max = v;
     }
   }
@@ -82,7 +90,9 @@ int? _extractAmount(String text) {
 
 int? _toCents(String? s) {
   if (s == null) return null;
-  final cleaned = s.replaceAll(',', '').replaceAll('，', '.');
+  // 千分位逗号是分隔符，不是小数点：1,234.56 -> 1234.56
+  final cleaned = s.replaceAll(',', '').replaceAll('，', '').trim();
+  if (!RegExp(r'^\d+(?:\.\d{1,2})?$').hasMatch(cleaned)) return null;
   final value = double.tryParse(cleaned);
   if (value == null) return null;
   return (value * 100).round();
@@ -168,12 +178,17 @@ String? _extractPayment(String text) {
 /// 根据票据上的商品关键词，猜测分类名（用于回填分类，用户仍可改）
 String _matchCategory(String text) {
   final rules = <String, List<String>>{
-    '餐饮': ['餐饮', '餐厅', '饭店', '食', '餐', '外卖', '咖啡', '奶茶', '火锅', '超市', '美团', '饿了么', '肯德基', '麦当劳', '星巴克', '瑞幸'],
+    '餐饮': ['餐饮', '餐厅', '饭店', '食', '餐', '外卖', '咖啡', '奶茶', '火锅', '美团', '饿了么', '肯德基', '麦当劳', '星巴克', '瑞幸'],
     '交通': ['交通', '打车', '出租', '地铁', '公交', '加油', '停车', '滴滴', '高铁', '火车', '航空', '机票', '共享单车'],
-    '购物': ['购物', '商场', '服饰', '服装', '鞋', '电商', '淘宝', '京东', '拼多多', '天猫', '唯品会'],
-    '日用': ['日用', '日用品', '百货', '家居', '洗护', '便利店'],
-    '娱乐': ['娱乐', '电影', '影院', '游戏', 'KTV', '健身', '视频会员', '音乐'],
-    '医疗': ['医院', '医药', '药店', '诊所', '挂号', '体检'],
+    '购物': ['购物', '商场', '服饰', '服装', '鞋', '电商', '淘宝', '京东', '拼多多', '天猫', '唯品会', '日用', '日用品', '百货', '家居', '洗护', '便利店', '超市'],
+    '居住': ['房租', '物业', '水费', '电费', '燃气', '宽带', '装修', '居住'],
+    '娱乐': ['娱乐', '电影', '影院', '游戏', 'KTV', '健身', '视频会员', '音乐', '会员'],
+    '医疗': ['医院', '医药', '药店', '诊所', '挂号', '体检', '医疗'],
+    '通讯': ['话费', '流量', '中国移动', '中国联通', '中国电信', '通讯'],
+    '旅行': ['酒店', '民宿', '景点', '旅行', '携程', '飞猪'],
+    '教育': ['学费', '书店', '课程', '培训', '教育', '文具'],
+    '人情': ['红包', '礼金', '随礼', '人情'],
+    '宠物': ['宠物', '猫粮', '狗粮', '兽医'],
   };
   for (final entry in rules.entries) {
     for (final kw in entry.value) {
@@ -182,3 +197,9 @@ String _matchCategory(String text) {
   }
   return '';
 }
+
+/// 供账单批量识别复用：按商户名猜分类
+String guessCategory(String text) => _matchCategory(text);
+
+/// 供账单批量识别复用：按文字猜支付方式
+String? guessPayment(String text) => _extractPayment(text);

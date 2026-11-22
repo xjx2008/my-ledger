@@ -101,6 +101,13 @@ class AppState extends ChangeNotifier {
     return id;
   }
 
+  /// 批量导入（账单截图）：只发一次通知
+  Future<void> addRecords(List<RecordItem> records) async {
+    if (records.isEmpty) return;
+    await db.insertRecords(records);
+    notifyListeners();
+  }
+
   Future<void> updateRecord(RecordItem record) async {
     await db.updateRecord(record);
     notifyListeners();

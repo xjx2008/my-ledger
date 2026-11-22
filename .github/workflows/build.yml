@@ -89,6 +89,23 @@ jobs:
           with io.open('android/app/proguard-rules.pro', 'a', encoding='utf-8') as f:
               f.write('\n' + rules)
           print('proguard keep rules appended')
+
+          # 禁用 lintVital：新版 Flutter 的 lint 工具与 image_picker 不兼容会崩溃
+          # 在 app 级 build.gradle* 的 android{} 块内插入 lint { checkReleaseBuilds false }
+          import glob
+          for gp in glob.glob('android/app/build.gradle*'):
+              with io.open(gp, encoding='utf-8') as f:
+                   _app = f.read()
+              if 'checkReleaseBuilds' not in _app:
+                  marker = 'android {'
+                  lint_block = ('android {\n    lint {\n        checkReleaseBuilds false\n        abortOnError false\n    }'
+                               if gp.endswith('.kts')
+                               else 'android {\n    lint {\n        checkReleaseBuilds false\n        abortOnError false\n    }')
+                  if marker in _app:
+                      _app = _app.replace(marker, lint_block, 1)
+                      with io.open(gp, 'w', encoding='utf-8') as f:
+                          f.write(_app)
+                      print('lint disabled in', gp)
           PY
 
       - name: Get dependencies

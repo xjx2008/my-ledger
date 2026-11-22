@@ -11,9 +11,9 @@ class AppState extends ChangeNotifier {
 
   List<Category> _categories = [];
   List<Category> get categories => _categories;
-  List<Category> expenseCategories =>
+  List<Category> get expenseCategories =>
       _categories.where((c) => c.type == 'expense').toList();
-  List<Category> incomeCategories =>
+  List<Category> get incomeCategories =>
       _categories.where((c) => c.type == 'income').toList();
 
   theme_file.ThemePreset _theme = theme_file.appThemes.first;

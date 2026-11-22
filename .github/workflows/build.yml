@@ -44,20 +44,20 @@ jobs:
         run: flutter build apk --release
 
       - name: Rename APK
-        run: cp build/app/outputs/flutter-apk/app-release.apk ledger-app-v${GITHUB_REF_NAME}.apk
+        run: cp build/app/outputs/flutter-apk/app-release.apk ledger-app-${GITHUB_REF_NAME}.apk
         if: startsWith(github.ref, 'refs/tags/')
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: ledger-app-v*.apk
+          files: ledger-app-*.apk
           generate_release_notes: true
           name: 我的账本 ${{ github.ref_name }}
           body: |
             ## 我的账本 Android 版
 
-            从 GitHub Releases 下载 `ledger-app-v*.apk`，传到手机直接安装即可（需允许安装未知来源应用）。
+            从 GitHub Releases 下载 `ledger-app-*.apk`，传到手机直接安装即可（需允许安装未知来源应用）。
 
             ### 功能
             - 手动记账（金额/分类/备注/日期）

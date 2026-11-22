@@ -1,6 +1,6 @@
 import 'dart:math' as math;
 
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Category;
 
 import '../data/models.dart';
 import '../theme/app_theme.dart';
@@ -176,7 +176,7 @@ class _TrendPainter extends CustomPainter {
       canvas.drawLine(Offset(left, y), Offset(right, y), gridPaint);
     }
 
-    final allDays = <DateTime>{...income.keys, ...expense.keys}..sort();
+    final allDays = {...income.keys, ...expense.keys}.toList()..sort();
     if (allDays.isEmpty) return;
     final start = startOfDay(from);
     final end = startOfDay(to);
@@ -206,7 +206,11 @@ class _TrendPainter extends CustomPainter {
       for (int i = 0; i < entries.length; i++) {
         final x = xOf(entries[i].key);
         final y = yOf(entries[i].value);
-        if (i == 0) path.moveTo(x, y) else path.lineTo(x, y);
+        if (i == 0) {
+          path.moveTo(x, y);
+        } else {
+          path.lineTo(x, y);
+        }
       }
       canvas.drawPath(path, paint);
       // 末端圆点

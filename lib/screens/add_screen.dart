@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Category;
 import 'package:flutter/services.dart';
 
 import '../data/app_state.dart';
@@ -438,7 +438,7 @@ class _Keypad extends StatelessWidget {
           ...keys.map((row) => Padding(
                 padding: const EdgeInsets.only(bottom: 6),
                 child: Row(
-                  children: row.map((k) => Expanded(child: _KeyButton(key: k, t: t, onTap: () => onKey(k)))).toList(),
+                  children: row.map((k) => Expanded(child: _KeyButton(keyLabel: k, t: t, onTap: () => onKey(k)))).toList(),
                 ),
               )),
         ],
@@ -448,11 +448,11 @@ class _Keypad extends StatelessWidget {
 }
 
 class _KeyButton extends StatelessWidget {
-  final String key;
+  final String keyLabel;
   final ThemePreset t;
   final VoidCallback onTap;
 
-  const _KeyButton({required this.key, required this.t, required this.onTap});
+  const _KeyButton({required this.keyLabel, required this.t, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -463,9 +463,9 @@ class _KeyButton extends StatelessWidget {
         height: 46,
         margin: const EdgeInsets.symmetric(horizontal: 3),
         child: Center(
-          child: key == 'back'
+          child: keyLabel == 'back'
               ? Icon(Icons.backspace_outlined, size: 20, color: t.text)
-              : Text(key, style: TextStyle(fontSize: 20, color: t.text)),
+              : Text(keyLabel, style: TextStyle(fontSize: 20, color: t.text)),
         ),
       ),
     );

@@ -1,9 +1,10 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Category;
 
 import '../data/app_state.dart';
 import '../data/models.dart';
 import '../data/presets.dart';
 import '../theme/app_theme.dart';
+import '../widgets/formatters.dart';
 import 'category_dialog.dart';
 
 class CategoriesScreen extends StatefulWidget {

@@ -6,6 +6,7 @@ import '../data/models.dart';
 import '../theme/app_theme.dart';
 import '../widgets/formatters.dart';
 import '../widgets/payment_badge.dart';
+import 'bill_draft_edit_sheet.dart';
 
 /// 账单截图导入页：把识别出的多笔做成草稿，勾选后一次写入
 class BillImportScreen extends StatefulWidget {
@@ -173,7 +174,7 @@ class _BillImportScreenState extends State<BillImportScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
             child: Text(
-              '勾选要导入的账目；分类是按商户自动猜的，导入后可在明细里修改。',
+              '点某一笔可以改金额/分类/日期；左边勾选要导入的，分类是按商户自动猜的。',
               style: TextStyle(fontSize: 12, color: t.subText),
             ),
           ),
@@ -191,6 +192,13 @@ class _BillImportScreenState extends State<BillImportScreen> {
                       draft: _drafts[i],
                       dateLabel: _dateLabel(_drafts[i]),
                       onChanged: (v) => setState(() => _drafts[i].selected = v),
+                      onEdit: () async {
+                        await showBillDraftEditSheet(
+                          context: context,
+                          draft: _drafts[i],
+                        );
+                        if (mounted) setState(() {});
+                      },
                       theme: t,
                     ),
                   ),
@@ -247,12 +255,14 @@ class _DraftTile extends StatelessWidget {
   final BillDraft draft;
   final String dateLabel;
   final ValueChanged<bool> onChanged;
+  final VoidCallback onEdit;
   final ThemePreset theme;
 
   const _DraftTile({
     required this.draft,
     required this.dateLabel,
     required this.onChanged,
+    required this.onEdit,
     required this.theme,
   });
 
@@ -263,7 +273,7 @@ class _DraftTile extends StatelessWidget {
     final amountColor = isIncome ? t.income : t.text;
     final sign = isIncome ? '+' : '-';
     return InkWell(
-      onTap: () => onChanged(!draft.selected),
+      onTap: onEdit,
       borderRadius: BorderRadius.circular(t.radius),
       child: Container(
         padding: const EdgeInsets.fromLTRB(6, 10, 14, 10),
@@ -302,6 +312,8 @@ class _DraftTile extends StatelessWidget {
                         Text(draft.categoryName,
                             style: TextStyle(fontSize: 11, color: t.subText)),
                       ],
+                      const SizedBox(width: 6),
+                      Icon(Icons.edit_outlined, size: 12, color: t.subText),
                     ],
                   ),
                 ],

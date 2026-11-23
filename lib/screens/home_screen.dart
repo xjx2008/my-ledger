@@ -5,6 +5,7 @@ import '../data/models.dart';
 import '../theme/app_theme.dart';
 import '../widgets/formatters.dart';
 import '../widgets/payment_badge.dart';
+import 'record_edit_sheet.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -43,6 +44,13 @@ class _HomeScreenState extends State<HomeScreen> {
         _summary = summary;
         _recent = recent;
       });
+    }
+  }
+
+  Future<void> _editRecord(RecordItem record) async {
+    final updated = await showRecordEditSheet(context: context, record: record);
+    if (updated != null) {
+      await appState.updateRecord(updated);
     }
   }
 
@@ -129,7 +137,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 if (_recent.isEmpty)
                   _emptyCard(t)
                 else
-                  ..._recent.map((r) => _RecordRow(record: r, t: t)),
+                  ..._recent.map((r) => GestureDetector(
+                    onTap: () => _editRecord(r),
+                    child: _RecordRow(record: r, t: t),
+                  )),
               ],
             ),
           ),

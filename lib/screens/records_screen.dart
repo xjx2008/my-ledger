@@ -5,6 +5,7 @@ import '../data/models.dart';
 import '../theme/app_theme.dart';
 import '../widgets/formatters.dart';
 import '../widgets/payment_badge.dart';
+import 'record_edit_sheet.dart';
 
 class RecordsScreen extends StatefulWidget {
   const RecordsScreen({super.key});
@@ -160,6 +161,14 @@ class _RecordTile extends StatelessWidget {
 
   const _RecordTile({required this.record, required this.t, required this.onChanged});
 
+  Future<void> _edit(BuildContext context) async {
+    final updated = await showRecordEditSheet(context: context, record: record);
+    if (updated != null) {
+      await appState.updateRecord(updated);
+      onChanged();
+    }
+  }
+
   Future<void> _showActions(BuildContext context) async {
     final action = await showModalBottomSheet<String>(
       context: context,
@@ -170,6 +179,11 @@ class _RecordTile extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
+              leading: Icon(Icons.edit_outlined, color: t.text),
+              title: Text('编辑这笔账', style: TextStyle(color: t.text)),
+              onTap: () => Navigator.pop(ctx, 'edit'),
+            ),
+            ListTile(
               leading: Icon(Icons.delete_outline, color: Colors.red.shade400),
               title: Text('删除这笔账', style: TextStyle(color: Colors.red.shade400)),
               onTap: () => Navigator.pop(ctx, 'delete'),
@@ -178,7 +192,9 @@ class _RecordTile extends StatelessWidget {
         ),
       ),
     );
-    if (action == 'delete') {
+    if (action == 'edit' && context.mounted) {
+      await _edit(context);
+    } else if (action == 'delete') {
       await appState.deleteRecord(record.id!);
       onChanged();
     }
@@ -190,6 +206,7 @@ class _RecordTile extends StatelessWidget {
     final isIncome = record.type == 'income';
     final c = isIncome ? t.income : colorFromValue(cat?.colorValue ?? 0xFF888780);
     return GestureDetector(
+      onTap: () => _edit(context),
       onLongPress: () => _showActions(context),
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),

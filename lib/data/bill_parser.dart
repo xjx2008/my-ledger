@@ -20,14 +20,14 @@ class OcrLine {
   double get height => bottom - top;
 }
 
-/// 账单截图里识别出来的一笔（导入前的草稿，用户可勾选/放弃）
+/// 账单截图里识别出来的一笔（导入前的草稿，用户可修改/勾选）
 class BillDraft {
-  final String merchant;
-  final int amountCents;
-  final String type; // 'expense' / 'income'
+  String merchant;
+  int amountCents;
+  String type; // 'expense' / 'income'
   DateTime? date;
-  final String payment;
-  final String categoryName;
+  String payment;
+  String categoryName;
   bool selected;
 
   BillDraft({

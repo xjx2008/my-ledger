@@ -28,18 +28,27 @@ class _StatsScreenState extends State<StatsScreen> {
   int _thresholdCents = 50000; // 默认 500 元
   bool _showIncomeCategories = false;
   bool _highByCategory = false;
+  late Future<_StatsData> _future;
 
   @override
   void initState() {
     super.initState();
+    _future = _loadStats();
     _loadThreshold();
+  }
+
+  void _reload() {
+    setState(() {
+      _future = _loadStats();
+    });
   }
 
   Future<void> _loadThreshold() async {
     final prefs = await SharedPreferences.getInstance();
     final value = prefs.getInt(_thresholdKey);
-    if (value != null && value > 0 && mounted) {
+    if (value != null && value > 0 && mounted && value != _thresholdCents) {
       setState(() => _thresholdCents = value);
+      _reload();
     }
   }
 
@@ -83,6 +92,7 @@ class _StatsScreenState extends State<StatsScreen> {
     }
     controller.dispose();
     setState(() => _thresholdCents = (result * 100).round());
+    _reload();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_thresholdKey, _thresholdCents);
   }
@@ -136,13 +146,17 @@ class _StatsScreenState extends State<StatsScreen> {
       _customFrom = from;
       _customTo = to;
     });
+    _reload();
   }
 
   Widget _modeTab(String label, RangeMode mode, ThemePreset t) {
     final active = _mode == mode;
     return Expanded(
       child: GestureDetector(
-        onTap: () => setState(() => _mode = mode),
+        onTap: () {
+          setState(() => _mode = mode);
+          _reload();
+        },
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 8),
           decoration: BoxDecoration(
@@ -226,7 +240,7 @@ class _StatsScreenState extends State<StatsScreen> {
                   ),
                 if (_mode == RangeMode.custom) const SizedBox(height: 12),
                 FutureBuilder<_StatsData>(
-                  future: _loadStats(),
+                  future: _future,
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
                       return Padding(
@@ -478,7 +492,7 @@ class _StatsScreenState extends State<StatsScreen> {
         final updated = await showRecordEditSheet(context: context, record: r);
         if (updated != null) {
           await appState.updateRecord(updated);
-          if (mounted) setState(() {});
+          if (mounted) _reload();
         }
       },
       child: Padding(

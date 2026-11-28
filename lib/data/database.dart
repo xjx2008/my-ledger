@@ -243,25 +243,36 @@ class AppDatabase {
     DateTime? from,
     DateTime? to,
     int? limit,
+    int? categoryId,
+    String? type,
+    int? minCents,
   }) async {
     final db = await database;
-    final buffer = StringBuffer();
+    final clauses = <String>[];
     final args = <Object?>[];
-    if (from != null || to != null) {
-      buffer.write(' WHERE ');
-      final clauses = <String>[];
-      if (from != null) {
-        clauses.add('date >= ?');
-        args.add(from.toIso8601String());
-      }
-      if (to != null) {
-        clauses.add('date <= ?');
-        args.add(to.toIso8601String());
-      }
-      buffer.write(clauses.join(' AND '));
+    if (from != null) {
+      clauses.add('date >= ?');
+      args.add(from.toIso8601String());
     }
+    if (to != null) {
+      clauses.add('date <= ?');
+      args.add(to.toIso8601String());
+    }
+    if (categoryId != null) {
+      clauses.add('category_id = ?');
+      args.add(categoryId);
+    }
+    if (type != null) {
+      clauses.add('type = ?');
+      args.add(type);
+    }
+    if (minCents != null) {
+      clauses.add('amount_cents >= ?');
+      args.add(minCents);
+    }
+    final where = clauses.isEmpty ? '' : ' WHERE ${clauses.join(' AND ')}';
     final sql = StringBuffer('SELECT * FROM records')
-      ..write(buffer.toString())
+      ..write(where)
       ..write(' ORDER BY date DESC, id DESC');
     if (limit != null) {
       sql.write(' LIMIT ?');

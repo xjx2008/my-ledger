@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../data/app_state.dart';
 import '../theme/app_theme.dart';
+import 'backup_screen.dart';
 import 'categories_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -50,6 +51,42 @@ class SettingsScreen extends StatelessWidget {
                               Text('分类管理', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: t.text)),
                               const SizedBox(height: 3),
                               Text('支出/收入分类，支持自定义增删改', style: TextStyle(fontSize: 11, color: t.subText)),
+                            ],
+                          ),
+                        ),
+                        Icon(Icons.chevron_right, color: t.subText),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                GestureDetector(
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const BackupScreen()),
+                  ),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                    decoration: BoxDecoration(color: t.card, borderRadius: BorderRadius.circular(t.radius)),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
+                            color: t.primary.withOpacity(0.13),
+                            borderRadius: BorderRadius.circular(11),
+                          ),
+                          child: Icon(Icons.swap_horiz_rounded, color: t.primary, size: 20),
+                        ),
+                        const SizedBox(width: 13),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('数据迁移与备份', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: t.text)),
+                              const SizedBox(height: 3),
+                              Text('升级/换机时导出、导入账目，支持自动快照', style: TextStyle(fontSize: 11, color: t.subText)),
                             ],
                           ),
                         ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'data/app_state.dart';
+import 'data/backup_service.dart';
 import 'screens/home_screen.dart';
 import 'screens/add_screen.dart';
 import 'screens/records_screen.dart';
@@ -15,6 +16,12 @@ void main() async {
     DeviceOrientation.portraitDown,
   ]);
   await appState.init();
+  // 版本升级后（或距离上次超过 20 小时）自动留一份本机快照，失败不影响启动
+  try {
+    await BackupService.instance.autoBackupIfNeeded();
+  } catch (e) {
+    debugPrint('自动备份失败: $e');
+  }
   runApp(const LedgerApp());
 }
 

@@ -46,6 +46,11 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 导入备份后调用：重新读分类并通知界面刷新
+  Future<void> reloadData() async {
+    await _loadCategories();
+  }
+
   Future<void> setThemeKey(String key) async {
     _theme = theme_file.themeByKey(key);
     final prefs = await SharedPreferences.getInstance();

@@ -22,45 +22,81 @@ class AppDatabase {
       path,
       version: 2,
       onCreate: (db, version) async {
-        await db.execute('''
-          CREATE TABLE categories (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            type TEXT NOT NULL,
-            color INTEGER NOT NULL,
-            icon TEXT NOT NULL,
-            sort_order INTEGER NOT NULL DEFAULT 0,
-            is_preset INTEGER NOT NULL DEFAULT 0
-          )
-        ''');
-        await db.execute('''
-          CREATE TABLE records (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            amount_cents INTEGER NOT NULL,
-            type TEXT NOT NULL,
-            category_id INTEGER NOT NULL,
-            note TEXT NOT NULL DEFAULT '',
-            payment TEXT NOT NULL DEFAULT 'wechat',
-            date TEXT NOT NULL,
-            created_at TEXT NOT NULL
-          )
-        ''');
-        await db.execute(
-          'CREATE INDEX idx_records_date ON records(date)',
-        );
-        await db.execute(
-          'CREATE INDEX idx_records_type ON records(type)',
-        );
+        await _ensureSchema(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
-        // v1 -> v2：老账目补上支付方式字段，默认微信，历史数据不丢
-        if (oldVersion < 2) {
-          await db.execute(
-            "ALTER TABLE records ADD COLUMN payment TEXT NOT NULL DEFAULT 'wechat'",
-          );
-        }
+        // 从任意旧版本升级：缺表补表、缺列补列，历史数据原样保留
+        await _ensureSchema(db);
+      },
+      onDowngrade: (db, oldVersion, newVersion) async {
+        // 装回旧包导致降级时也不清库，只把结构补齐
+        await _ensureSchema(db);
       },
     );
+  }
+
+  /// 幂等的结构检查：任何版本（包括很早的 v1 / 结构不完整的库）都能安全升级。
+  /// 只做"补"，从不删数据。
+  Future<void> _ensureSchema(Database db) async {
+    final tables = await db.rawQuery(
+      "SELECT name FROM sqlite_master WHERE type = 'table'",
+    );
+    final names = tables.map((r) => (r['name'] ?? '').toString()).toSet();
+
+    if (!names.contains('categories')) {
+      await db.execute('''
+        CREATE TABLE categories (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          type TEXT NOT NULL,
+          color INTEGER NOT NULL,
+          icon TEXT NOT NULL,
+          sort_order INTEGER NOT NULL DEFAULT 0,
+          is_preset INTEGER NOT NULL DEFAULT 0
+        )
+      ''');
+    }
+    if (!names.contains('records')) {
+      await db.execute('''
+        CREATE TABLE records (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          amount_cents INTEGER NOT NULL,
+          type TEXT NOT NULL,
+          category_id INTEGER NOT NULL,
+          note TEXT NOT NULL DEFAULT '',
+          payment TEXT NOT NULL DEFAULT 'wechat',
+          date TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        )
+      ''');
+    }
+
+    // v1 -> v2 的 payment；以及各种历史缺列，统一按需补齐
+    await _ensureColumn(db, 'records', 'payment', "TEXT NOT NULL DEFAULT 'wechat'");
+    await _ensureColumn(db, 'records', 'note', "TEXT NOT NULL DEFAULT ''");
+    await _ensureColumn(db, 'records', 'type', "TEXT NOT NULL DEFAULT 'expense'");
+    await _ensureColumn(db, 'records', 'amount_cents', 'INTEGER NOT NULL DEFAULT 0');
+    await _ensureColumn(db, 'records', 'category_id', 'INTEGER NOT NULL DEFAULT 0');
+    await _ensureColumn(db, 'records', 'date', "TEXT NOT NULL DEFAULT ''");
+    await _ensureColumn(db, 'records', 'created_at', "TEXT NOT NULL DEFAULT ''");
+    await _ensureColumn(db, 'categories', 'sort_order', 'INTEGER NOT NULL DEFAULT 0');
+    await _ensureColumn(db, 'categories', 'is_preset', 'INTEGER NOT NULL DEFAULT 0');
+
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_records_date ON records(date)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_records_type ON records(type)');
+  }
+
+  Future<void> _ensureColumn(
+    Database db,
+    String table,
+    String column,
+    String ddl,
+  ) async {
+    final info = await db.rawQuery('PRAGMA table_info($table)');
+    final has = info.any((row) => (row['name'] ?? '').toString() == column);
+    if (!has) {
+      await db.execute('ALTER TABLE $table ADD COLUMN $column $ddl');
+    }
   }
 
   // ---------- 分类 ----------
@@ -162,6 +198,30 @@ class AppDatabase {
       batch.insert('records', map);
     }
     await batch.commit(noResult: true);
+  }
+
+  /// 用一批账目替换全部账目（恢复备份的"覆盖"模式）：
+  /// 删除和插入在同一个事务里，中途失败不会留下半截数据。
+  Future<void> replaceRecords(List<RecordItem> records) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      await txn.delete('records');
+      final batch = txn.batch();
+      for (final record in records) {
+        final map = record.toMap();
+        map.remove('id');
+        batch.insert('records', map);
+      }
+      await batch.commit(noResult: true);
+    });
+  }
+
+  Future<int> countRecords() async {
+    final db = await database;
+    final value = Sqflite.firstIntValue(
+      await db.rawQuery('SELECT COUNT(*) FROM records'),
+    );
+    return value ?? 0;
   }
 
   Future<int> updateRecord(RecordItem record) async {
